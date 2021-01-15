@@ -1,6 +1,11 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use num_derive::{FromPrimitive, ToPrimitive};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum SyntaxKind {
     Root,
+    ArrayHeader,
+    TableHeader,
+
     Ident,
     LBracket,
     RBracket,
@@ -17,4 +22,10 @@ pub enum SyntaxKind {
     Whitespace,
     Comment,
     Error,
+}
+
+impl From<SyntaxKind> for rowan::SyntaxKind {
+    fn from(kind: SyntaxKind) -> Self {
+        Self(kind as u16)
+    }
 }

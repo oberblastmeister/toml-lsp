@@ -5,8 +5,10 @@ use std::collections::VecDeque;
 use std::str::CharIndices;
 
 use char_iter::CharIter;
-use token::SyntaxKind::{self, *};
+pub use token::SyntaxKind;
+use SyntaxKind::*;
 
+#[derive(Debug)]
 pub struct Lexer<'a> {
     chars: CharIter<'a>,
 }
@@ -16,6 +18,10 @@ impl<'a> Lexer<'a> {
         Lexer {
             chars: CharIter::new(input),
         }
+    }
+
+    pub fn slice(&self) -> &'a str {
+        self.chars.slice()
     }
 
     fn lex_main(&mut self) -> Option<(SyntaxKind, &'a str)> {
@@ -34,9 +40,9 @@ impl<'a> Lexer<'a> {
             _ if is_whitespace(c) => self.whitespace()?,
             _ if is_letter(c) => self.key_word()?,
             _ if is_number(c) => self.number()?,
-            _ => todo!(),
+            _ => Error,
         };
-        let slice = self.chars.slice();
+        let slice = self.slice();
         self.chars.ignore();
 
         Some((res, slice))
@@ -54,7 +60,7 @@ impl<'a> Lexer<'a> {
 
     fn key_word(&mut self) -> Option<SyntaxKind> {
         self.chars.accept_while(is_letter);
-        let res = match self.chars.slice() {
+        let res = match self.slice() {
             "true" => True,
             "false" => False,
             _ => self.ident()?,
@@ -68,6 +74,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn number(&mut self) -> Option<SyntaxKind> {
+        self.chars.accept_while(is_number);
         Some(Number)
     }
 
@@ -147,13 +154,44 @@ mod tests {
             r#"# a comment
 this_key = "a string""#,
             &[
-                (Comment, " a comment"),
+                (Comment, "# a comment"),
                 (Newline, "\n"),
                 (Ident, "this_key"),
                 (Whitespace, " "),
                 (Assign, "="),
                 (Whitespace, " "),
                 (String, "\"a string\""),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_number() {
+        test_lexer(
+            r#"# another comment
+another_key = 12345"#,
+            &[
+                (Comment, "# another comment"),
+                (Newline, "\n"),
+                (Ident, "another_key"),
+                (Whitespace, " "),
+                (Assign, "="),
+                (Whitespace, " "),
+                (Number, "12345"),
+            ],
+        )
+    }
+
+    #[test]
+    fn test_assign_again() {
+        test_lexer(
+            r#"hello = 12345"#,
+            &[
+                (Ident, "hello"),
+                (Whitespace, " "),
+                (Assign, "="),
+                (Whitespace, " "),
+                (Number, "12345"),
             ],
         )
     }

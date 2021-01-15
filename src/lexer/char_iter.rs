@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::str::CharIndices;
 
+#[derive(Debug)]
 pub struct CharIter<'a> {
     start: usize,
     end: usize,
@@ -42,7 +43,7 @@ impl<'a> CharIter<'a> {
     }
 
     #[inline]
-    pub fn slice(&mut self) -> &'a str {
+    pub fn slice(&self) -> &'a str {
         &self.input[self.start..self.end]
     }
 
