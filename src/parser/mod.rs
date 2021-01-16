@@ -19,15 +19,13 @@ macro_rules! expect_match {
     ($p:expr, $($token:ident => $do:expr,)+) => {
         {
             let p = &mut *$p;
-            if p.expect_peek_any(&[$( $token ),+]) {
-                match p.peek_token().unwrap() {
+            if let Some(tok) = p.expect_peek_any(&[$( $token ),+]) {
+                match tok {
                     $( $token => {
-                        {$do}
+                        {$do};
                     } ),+,
-                    _ => None,
+                    _ => panic!("should not happen"),
                 }
-            } else {
-                None
             }
         }
     };
@@ -92,18 +90,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_contents(&mut self) -> Option<()> {
+    fn parse_contents(&mut self) {
         expect_match!(self,
             Ident => self.parse_assign(),
         )
     }
 
-    fn parse_assign(&mut self) -> Option<()> {
+    fn parse_assign(&mut self) {
         self.start_node(Assign);
-        self.expect_sequential(&[Ident, Equal])?;
-        self.parse_rhs()?;
+        self.expect_sequential(&[Ident, Equal]);
+        self.parse_rhs();
         self.finish_node();
-        Some(())
     }
 
     fn parse_all_headers(&mut self) {
@@ -128,49 +125,46 @@ impl<'a> Parser<'a> {
         self.builder.start_node_at(checkpoint, kind.into());
     }
 
-    fn parse_header(&mut self) -> Option<()> {
+    fn parse_header(&mut self) {
         let checkpoint = self.checkpoint();
         expect_match!(self,
             LBracket => {
-                self.bump()?;
+                self.bump();
                 if self.accept(LBracket) {
                     self.start_node_at(checkpoint, ArrayHeader);
-                    self.parse_table_ident()?;
-                    self.expect_sequential(&[RBracket, RBracket, Newline])?;
-                    self.parse_table_contents()?;
+                    self.parse_table_ident();
+                    self.expect_sequential(&[RBracket, RBracket, Newline]);
+                    self.parse_table_contents();
                     self.finish_node();
                 } else {
                     self.start_node_at(checkpoint, TableHeader);
-                    self.parse_table_ident()?;
-                    self.expect_sequential(&[RBracket, Newline])?;
-                    self.parse_table_contents()?;
+                    self.parse_table_ident();
+                    self.expect_sequential(&[RBracket, Newline]);
+                    self.parse_table_contents();
                     self.finish_node();
                 }
-                Some(())
+
             },
         )
     }
 
-    fn parse_table_ident(&mut self) -> Option<()> {
-        self.expect_bump(Ident)?;
+    fn parse_table_ident(&mut self) {
+        self.expect_bump(Ident);
         if self.accept(Dot) {
-            self.parse_table_ident()?;
+            self.parse_table_ident()
         }
-        Some(())
     }
 
-    fn parse_table_contents(&mut self) -> Option<()> {
+    fn parse_table_contents(&mut self) {
         loop {
             self.accept_all(Newline);
 
-            dbg!(self.peek());
-
             if self.peek_token().map(|k| k == LBracket).unwrap_or(true) {
-                return Some(());
+                return;
             }
 
             if self.peek().is_none() {
-                return Some(());
+                return;
             }
 
             expect_match!(self,
@@ -178,12 +172,11 @@ impl<'a> Parser<'a> {
                 RBracket => {
                     break;
                 },
-            )?;
+            )
         }
-        Some(())
     }
 
-    fn parse_rhs(&mut self) -> Option<()> {
+    fn parse_rhs(&mut self) {
         expect_match!(self,
             Number => self.bump(),
             String => self.bump(),
@@ -192,27 +185,23 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn parse_array(&mut self) -> Option<()> {
+    fn parse_array(&mut self) {
         self.start_node(Array);
-        self.bump()?;
-        self.parse_rhs()?;
+        self.bump();
+        self.parse_rhs();
         loop {
             if self.accept(Comma) {
-                self.parse_rhs()?;
+                self.parse_rhs()
             } else if self.accept(Newline) {
-                return None;
+                return;
             } else if self.accept(RBracket) {
                 break;
             }
         }
-        // self.expect_bump(RBracket)?;
         self.finish_node();
-        Some(())
     }
 
-    fn parse_table(&mut self) -> Option<()> {
-        Some(())
-    }
+    fn parse_table(&mut self) {}
 
     fn start_node(&mut self, kind: SyntaxKind) {
         self.builder.start_node(kind.into())
@@ -226,25 +215,22 @@ impl<'a> Parser<'a> {
         self.builder.token(token.into(), s.into());
     }
 
-    fn bump_raw(&mut self) -> Option<()> {
+    fn bump_raw(&mut self) {
         let next = self.next();
         match next {
             Some((tok, s)) => {
                 self.index.checked_add(TextSize::of(s));
                 self.token(tok, s);
-                Some(())
             }
             None => {
                 self.errors.push(ParseError::UnexpectedEof);
-                None
             }
         }
     }
 
-    fn bump(&mut self) -> Option<()> {
-        self.eat_trivia()?;
-        self.bump_raw()?;
-        Some(())
+    fn bump(&mut self) {
+        self.eat_trivia();
+        self.bump_raw();
     }
 
     fn bump_error(&mut self) {

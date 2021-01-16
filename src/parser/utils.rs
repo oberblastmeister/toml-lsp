@@ -27,13 +27,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub(super) fn expect_peek_any(&mut self, allowed_slice: &[SyntaxKind]) -> bool {
+    pub(super) fn expect_peek_any(&mut self, allowed_slice: &[SyntaxKind]) -> Option<SyntaxKind> {
         let next = match self.peek_token() {
             None => None,
             Some(kind) if allowed_slice.contains(&kind) => Some(kind),
             Some(kind) => {
                 let start = self.start_error_node();
-                self.bump_until(|k| k == Newline);
+                self.bump_until(|k| allowed_slice.contains(&k));
                 let end = self.finish_error_node();
 
                 self.errors.push(ParseError::Expected {
@@ -50,32 +50,23 @@ impl<'a> Parser<'a> {
             self.errors.push(ParseError::UnexpectedEofWanted(
                 allowed_slice.to_vec().into_boxed_slice(),
             ));
-            false
-        } else {
-            true
         }
+        next
     }
 
-    pub(super) fn expect_peek(&mut self, expected: SyntaxKind) -> Option<()> {
-        if self.expect_peek_any(&[expected]) {
-            Some(())
-        } else {
-            None
-        }
+    pub(super) fn expect_peek(&mut self, expected: SyntaxKind) -> Option<SyntaxKind> {
+        self.expect_peek_any(&[expected])
     }
 
-    pub(super) fn expect_bump(&mut self, expected: SyntaxKind) -> Option<()> {
-        if self.expect_peek_any(&[expected]) {
+    pub(super) fn expect_bump(&mut self, expected: SyntaxKind) {
+        if self.expect_peek_any(&[expected]).is_some() {
             self.bump();
-            Some(())
-        } else {
-            None
         }
     }
 
     pub(super) fn expect_sequential(&mut self, expected_slice: &[SyntaxKind]) -> Option<()> {
         for expected in expected_slice {
-            self.expect_bump(*expected)?;
+            self.expect_bump(*expected);
         }
         Some(())
     }

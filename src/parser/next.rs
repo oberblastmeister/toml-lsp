@@ -11,7 +11,7 @@ impl<'a> Parser<'a> {
             .map(|t| t == Whitespace || t == Comment)
             .unwrap_or(false)
         {
-            self.bump_raw()?;
+            self.bump_raw();
         }
         Some(())
     }
