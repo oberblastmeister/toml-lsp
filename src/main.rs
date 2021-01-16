@@ -1,6 +1,6 @@
-use std::{collections::HashMap, panic};
 use std::fs::{self, File};
 use std::io;
+use std::{collections::HashMap, panic};
 
 use log::{debug, error, info, trace, warn};
 use lsp_server::{Connection, ErrorCode, Message, Notification, Request, RequestId, Response};
@@ -114,21 +114,21 @@ impl Server {
                 info!("did open");
                 let params: DidOpenTextDocumentParams = serde_json::from_value(req.params)?;
                 let text = params.text_document.text;
-                // let parsed = parser::parse(&text);
+                let parsed = parser::parse(&text);
                 // trace!("Parsed: {:#?}", parsed);
-                // self.send_diagnostics(params.text_document.uri.clone(), &text, &parsed)?;
-                self.send_simple(params.text_document.uri.clone(), "did open");
-                // self.files.insert(params.text_document.uri, (parsed, text));
+                self.send_diagnostics(params.text_document.uri.clone(), &text, &parsed)?;
+                // self.send_simple(params.text_document.uri.clone(), "did open");
+                self.files.insert(params.text_document.uri, (parsed, text));
             }
             DidChangeTextDocument::METHOD => {
                 let params: DidChangeTextDocumentParams = serde_json::from_value(req.params)?;
                 if let Some(change) = params.content_changes.into_iter().last() {
-                    // let parsed = parser::parse(&change.text);
+                    let parsed = parser::parse(&change.text);
                     // debug!("Parsed: {:#?}", parsed);
-                    self.send_simple(params.text_document.uri.clone(), &change.text);
-                    // self.send_diagnostics(params.text_document.uri.clone(), &change.text, &parsed)?;
-                    // self.files
-                    //     .insert(params.text_document.uri, (parsed, change.text));
+                    // self.send_simple(params.text_document.uri.clone(), &change.text);
+                    self.send_diagnostics(params.text_document.uri.clone(), &change.text, &parsed)?;
+                    self.files
+                        .insert(params.text_document.uri, (parsed, change.text));
                 }
             }
             _ => (),

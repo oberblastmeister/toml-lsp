@@ -1,9 +1,9 @@
 mod error;
+mod next;
 mod syntax;
 mod utils;
-mod next;
 
-use std::{collections::VecDeque, convert::TryFrom};
+use std::{collections::VecDeque, convert::TryFrom, fmt};
 
 use rowan::{Checkpoint, GreenNode, GreenNodeBuilder, Language, SyntaxNode, TextRange, TextSize};
 
@@ -19,11 +19,15 @@ macro_rules! expect_match {
     ($p:expr, $($token:ident => $do:expr,)+) => {
         {
             let p = &mut *$p;
-            if let Some(next) = p.expect_peek_any(&[$( $token ),+]) {
-                match next {
-                    $( $token => {$do} ),+,
-                    _ => unreachable!(),
+            if p.expect_peek_any(&[$( $token ),+]) {
+                match p.peek_token().unwrap() {
+                    $( $token => {
+                        {$do}
+                    } ),+,
+                    _ => None,
                 }
+            } else {
+                None
             }
         }
     };
@@ -52,7 +56,6 @@ impl<'a> Parser<'a> {
         let mut buffer = VecDeque::with_capacity(1);
         let mut lexer = Lexer::new(input);
         if let Some(tok) = lexer.next() {
-            println!("yes");
             buffer.push_back(tok);
         }
         let errors: Vec<ParseError> = Vec::new();
@@ -65,35 +68,122 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_main(&mut self) {
+    pub fn parse(mut self) -> AST {
+        self.start_node(Root);
+        loop {
+            self.accept_all(Newline);
+
+            if self.peek().is_none() {
+                break;
+            }
+
+            if self.peek_token().unwrap() == LBracket {
+                self.parse_all_headers();
+                break;
+            }
+
+            self.parse_contents();
+        }
+        self.finish_node();
+
+        AST {
+            node: self.builder.finish(),
+            errors: self.errors,
+        }
+    }
+
+    fn parse_contents(&mut self) -> Option<()> {
         expect_match!(self,
             Ident => self.parse_assign(),
-            RBracket => self.parse_header(),
-        );
+        )
     }
 
-    fn parse_assign(&mut self) {
+    fn parse_assign(&mut self) -> Option<()> {
         self.start_node(Assign);
-        self.expect(Ident);
-        self.expect(Assign);
-        self.parse_rhs();
+        self.expect_sequential(&[Ident, Equal])?;
+        self.parse_rhs()?;
         self.finish_node();
+        Some(())
     }
 
-    fn parse_header(&mut self) {
-        self.bump(); // consume first [ token
-        // if self.accept(RBrace)
+    fn parse_all_headers(&mut self) {
+        loop {
+            self.accept_all(Newline);
+
+            if self.peek().is_none() {
+                return;
+            }
+
+            self.parse_header();
+        }
     }
 
-    fn parse_table_header(&mut self) {}
-
-    fn parse_array_header(&mut self) {
-        self.start_node(ArrayHeader);
-        expect_match!(self, LBracket => self.bump());
+    #[inline]
+    fn checkpoint(&self) -> Checkpoint {
+        self.builder.checkpoint()
     }
 
+    #[inline]
+    fn start_node_at(&mut self, checkpoint: Checkpoint, kind: SyntaxKind) {
+        self.builder.start_node_at(checkpoint, kind.into());
+    }
 
-    fn parse_rhs(&mut self) {
+    fn parse_header(&mut self) -> Option<()> {
+        let checkpoint = self.checkpoint();
+        expect_match!(self,
+            LBracket => {
+                self.bump()?;
+                if self.accept(LBracket) {
+                    self.start_node_at(checkpoint, ArrayHeader);
+                    self.parse_table_ident()?;
+                    self.expect_sequential(&[RBracket, RBracket, Newline])?;
+                    self.parse_table_contents()?;
+                    self.finish_node();
+                } else {
+                    self.start_node_at(checkpoint, TableHeader);
+                    self.parse_table_ident()?;
+                    self.expect_sequential(&[RBracket, Newline])?;
+                    self.parse_table_contents()?;
+                    self.finish_node();
+                }
+                Some(())
+            },
+        )
+    }
+
+    fn parse_table_ident(&mut self) -> Option<()> {
+        self.expect_bump(Ident)?;
+        if self.accept(Dot) {
+            self.parse_table_ident()?;
+        }
+        Some(())
+    }
+
+    fn parse_table_contents(&mut self) -> Option<()> {
+        loop {
+            self.accept_all(Newline);
+
+            dbg!(self.peek());
+
+            if self.peek_token().map(|k| k == LBracket).unwrap_or(true) {
+                return Some(());
+            }
+
+            if self.peek().is_none() {
+                return Some(());
+            }
+
+            expect_match!(self,
+                Ident => self.parse_assign(),
+                RBracket => {
+                    break;
+                },
+            )?;
+        }
+        Some(())
+    }
+
+    fn parse_rhs(&mut self) -> Option<()> {
         expect_match!(self,
             Number => self.bump(),
             String => self.bump(),
@@ -102,12 +192,29 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn parse_table(&mut self) {}
+    fn parse_array(&mut self) -> Option<()> {
+        self.start_node(Array);
+        self.bump()?;
+        self.parse_rhs()?;
+        loop {
+            if self.accept(Comma) {
+                self.parse_rhs()?;
+            } else if self.accept(Newline) {
+                return None;
+            } else if self.accept(RBracket) {
+                break;
+            }
+        }
+        // self.expect_bump(RBracket)?;
+        self.finish_node();
+        Some(())
+    }
 
-    fn parse_array(&mut self) {}
+    fn parse_table(&mut self) -> Option<()> {
+        Some(())
+    }
 
     fn start_node(&mut self, kind: SyntaxKind) {
-        self.eat_trivia();
         self.builder.start_node(kind.into())
     }
 
@@ -119,20 +226,25 @@ impl<'a> Parser<'a> {
         self.builder.token(token.into(), s.into());
     }
 
-    fn bump_raw(&mut self) {
+    fn bump_raw(&mut self) -> Option<()> {
         let next = self.next();
         match next {
             Some((tok, s)) => {
                 self.index.checked_add(TextSize::of(s));
                 self.token(tok, s);
+                Some(())
             }
-            None => self.errors.push(ParseError::UnexpectedEof),
+            None => {
+                self.errors.push(ParseError::UnexpectedEof);
+                None
+            }
         }
     }
 
-    fn bump(&mut self) {
-        self.eat_trivia();
-        self.bump_raw();
+    fn bump(&mut self) -> Option<()> {
+        self.eat_trivia()?;
+        self.bump_raw()?;
+        Some(())
     }
 
     fn bump_error(&mut self) {
@@ -155,53 +267,75 @@ impl AST {
         SyntaxNode::new_root(self.node.clone())
     }
 
-    pub fn debug(&self) -> std::string::String {
-        let formatted = format!("{:#?}", self.node());
-
-        // We cut off the last byte because formatting the SyntaxNode adds on a newline at the end.
-        formatted[0..formatted.len() - 1].to_string()
-    }
-
     pub fn errors(&self) -> Vec<ParseError> {
         self.errors.clone()
     }
 }
 
+impl fmt::Display for AST {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let formatted = format!("{:#?}", self.node());
+
+        // We cut off the last byte because formatting the SyntaxNode adds on a newline at the end.
+        write!(f, "{}", &formatted[0..formatted.len() - 1])
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{ffi::OsStr, fmt::Write, fs, path::PathBuf};
+
     use super::*;
-    use expect_test::{expect, Expect};
+    use expect_test::{expect, expect_file, Expect};
+    use pretty_assertions::assert_eq;
 
     fn check(input: &str, expected: Expect) {
         let ast = Parser::new(input).parse();
-        expected.assert_eq(&ast.debug());
+        expected.assert_eq(&format!("{}", ast));
     }
 
-    #[test]
-    fn test_assign() {
-        check(
-            "hello = 12435",
-            expect![[r#"Root@0..13
-  Assign@0..13
-    Ident@0..5 "hello"
-    Whitespace@5..6 " "
-    Assign@6..7 "="
-    Whitespace@7..8 " "
-    Number@8..13 "12435""#]],
-        )
+    fn test_dir(name: &str) {
+        let dir: PathBuf = ["test_data", name].iter().collect();
+
+        dir.read_dir()
+            .expect("Failed to read dir")
+            .map(|p| p.expect("Failed to read entry").path())
+            .filter(|p| p.extension() == Some(OsStr::new("toml")))
+            .for_each(|mut p| {
+                let mut code = fs::read_to_string(&p).expect("Failed to read to string");
+                if code.ends_with('\n') {
+                    code.truncate(code.len() - 1);
+                }
+                println!("code: {}\n", code);
+
+                let ast = parse(&code);
+
+                p.set_extension("expect");
+                let expected = fs::read_to_string(&p).unwrap();
+
+                let mut actual = std::string::String::new();
+                for error in ast.errors() {
+                    writeln!(actual, "error: {}", error).unwrap();
+                }
+                writeln!(actual, "{}", ast).unwrap();
+
+                if actual != expected {
+                    p.set_extension("toml");
+                    eprintln!("In {}:", p.display());
+                    eprintln!("--- Actual ---");
+                    eprintln!("{}", actual);
+                    eprintln!("-- Expected ---");
+                    eprintln!("{}", expected);
+                    eprintln!("--- End ---");
+                    panic!("Tests did not match");
+                }
+            })
     }
 
-    #[test]
-    fn test_whitespace() {
-        check(
-            "name \t = \"hello\"",
-            expect![["Root@0..16
-  Assign@0..16
-    Ident@0..4 \"name\"
-    Whitespace@4..7 \" \\t \"
-    Assign@7..8 \"=\"
-    Whitespace@8..9 \" \"
-    String@9..16 \"\\\"hello\\\"\""]],
-        )
+    #[rustfmt::skip]
+    mod dir_tests {
+        use super::test_dir;
+        #[test] fn let_test() { test_dir("parser/let") }
+        #[test] fn header() { test_dir("parser/header") }
     }
 }

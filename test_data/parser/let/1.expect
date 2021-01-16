@@ -1,0 +1,18 @@
+Root@0..60
+  Comment@0..19 "# this is a comment"
+  Newline@19..20 "\n"
+  Assign@20..33
+    Ident@20..25 "hello"
+    Whitespace@25..26 " "
+    Equal@26..27 "="
+    Whitespace@27..28 " "
+    Number@28..33 "12435"
+  Newline@33..34 "\n"
+  Newline@34..35 "\n"
+  Newline@35..36 "\n"
+  Assign@36..60
+    Ident@36..47 "another_key"
+    Whitespace@47..48 " "
+    Equal@48..49 "="
+    Whitespace@49..50 " "
+    String@50..60 "\"a string\""

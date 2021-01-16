@@ -1,0 +1,13 @@
+Root@0..31
+  Assign@0..31
+    Ident@0..7 "authors"
+    Whitespace@7..8 " "
+    Equal@8..9 "="
+    Whitespace@9..10 " "
+    Array@10..31
+      LBracket@10..11 "["
+      String@11..19 "\"person\""
+      Comma@19..20 ","
+      Whitespace@20..21 " "
+      String@21..30 "\"another\""
+      RBracket@30..31 "]"

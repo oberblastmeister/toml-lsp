@@ -5,14 +5,15 @@ use super::{
 };
 
 impl<'a> Parser<'a> {
-    pub(super) fn eat_trivia(&mut self) {
+    pub(super) fn eat_trivia(&mut self) -> Option<()> {
         while self
             .peek_token_raw()
             .map(|t| t == Whitespace || t == Comment)
             .unwrap_or(false)
         {
-            self.bump_raw()
+            self.bump_raw()?;
         }
+        Some(())
     }
 
     pub(super) fn peek_token_raw(&self) -> Option<SyntaxKind> {
@@ -42,17 +43,5 @@ impl<'a> Parser<'a> {
 
     pub(super) fn next_token(&mut self) -> Option<SyntaxKind> {
         self.next().map(|(tok, _)| tok)
-    }
-
-    pub(super) fn parse(mut self) -> AST {
-        self.start_node(Root);
-        while self.peek().is_some() {
-            self.parse_main();
-        }
-        self.finish_node();
-        AST {
-            node: self.builder.finish(),
-            errors: self.errors,
-        }
     }
 }

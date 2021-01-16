@@ -3,8 +3,14 @@ use num_derive::{FromPrimitive, ToPrimitive};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum SyntaxKind {
     Root,
+
     ArrayHeader,
     TableHeader,
+
+    Array,
+    Table,
+
+    Assign,
 
     Ident,
     LBracket,
@@ -15,13 +21,14 @@ pub enum SyntaxKind {
     True,
     False,
     Date,
-    Assign,
+    Equal,
     String,
     Newline,
     Comma,
     Whitespace,
     Comment,
     Error,
+    Dot,
 }
 
 impl From<SyntaxKind> for rowan::SyntaxKind {

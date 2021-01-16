@@ -1,0 +1,35 @@
+Root@0..89
+  Assign@0..15
+    Ident@0..5 "a_key"
+    Whitespace@5..6 " "
+    Equal@6..7 "="
+    Whitespace@7..8 " "
+    String@8..15 "\"value\""
+  Newline@15..16 "\n"
+  Newline@16..17 "\n"
+  TableHeader@17..63
+    LBracket@17..18 "["
+    Ident@18..24 "header"
+    Dot@24..25 "."
+    Ident@25..32 "another"
+    RBracket@32..33 "]"
+    Newline@33..34 "\n"
+    Assign@34..61
+      Ident@34..44 "nested_key"
+      Whitespace@44..45 " "
+      Equal@45..46 "="
+      Whitespace@46..47 " "
+      String@47..61 "\"nested_value\""
+    Newline@61..62 "\n"
+    Newline@62..63 "\n"
+  TableHeader@63..89
+    LBracket@63..64 "["
+    Ident@64..70 "second"
+    RBracket@70..71 "]"
+    Newline@71..72 "\n"
+    Assign@72..89
+      Ident@72..79 "another"
+      Whitespace@79..80 " "
+      Equal@80..81 "="
+      Whitespace@81..82 " "
+      String@82..89 "\"ehllo\""
