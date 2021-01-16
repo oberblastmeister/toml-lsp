@@ -86,7 +86,7 @@ impl<'a> Lexer<'a> {
 }
 
 fn is_letter(c: char) -> bool {
-    c.is_alphabetic() || c == '_'
+    c.is_alphabetic() || c == '_' || c == '-'
 }
 
 const fn is_whitespace(c: char) -> bool {
