@@ -159,7 +159,7 @@ impl Server {
         let mut diagnostics = Vec::with_capacity(errors.len());
         for err in errors {
             if let ParseError::Expected {
-                range: node_range, ..
+                range: Some(node_range), ..
             } = err
             {
                 let the_range = range(code, node_range);

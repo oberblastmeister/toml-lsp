@@ -15,6 +15,8 @@ pub use error::ParseError;
 
 use syntax::Toml;
 
+type ParseResult<T, E = ParseError> = Result<T, E>;
+
 macro_rules! expect_match {
     ($p:expr, $( $token:ident => $do:expr ),+ $(,)?) => {
         // expect_match!($p, $( $token => { $do } ),+, _ => ())
@@ -52,15 +54,6 @@ macro_rules! expect_match {
                 #[allow(unreachable_code)]
                 None
             }
-        }
-    };
-}
-
-macro_rules! break_try {
-    ($try:expr) => {
-        match $try {
-            Some(e) => e,
-            None => break,
         }
     };
 }
@@ -215,34 +208,53 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // fn parse_array(&mut self) {
-    //     self.start_node(Array);
-    //     self.expect_bump(LBracket);
-
-    //     self.parse_rhs();
-    //     while self.peek().is_some() && self.peek_is(RBracket).is_none() {
-    //         // dbg!(self.peek_n(1));
-    //         // self.expect_bump(Comma);
-    //         // self.accept_all(Newline);
-    //         if let Some(RBracket) = self.peek_n(1).map(|(tok, _s)| tok) {
-    //             self.accept(Comma);
-    //         } else {
-    //             self.expect_bump(Comma);
-    //         }
-    //         self.accept_all(Newline);
-    //         self.parse_rhs();
-    //     }
-    //     self.expect_bump(RBracket);
-    //     self.finish_node();
-    // }
+    fn parse_rhs_no_advance(&mut self) -> ParseResult<SyntaxKind> {
+        let expected = [Number, String, LBrace, LBracket];
+        let peek_tok = self
+            .peek_token()
+            .ok_or_else(|| ParseError::UnexpectedEofWanted(expected.to_vec().into_boxed_slice()))?;
+        match peek_tok {
+            Number => self.bump(),
+            String => self.bump(),
+            LBrace => self.parse_table(),
+            LBracket => self.parse_array(),
+            got => {
+                return Err(ParseError::Expected {
+                    expected: expected.to_vec().into_boxed_slice(),
+                    got,
+                    range: None,
+                })
+            }
+        }
+        Ok(peek_tok)
+    }
 
     fn parse_array(&mut self) {
         self.start_node(Array);
         self.expect_bump(LBracket);
 
-        while self.peek().is_some() && self.peek_is(RBracket).is_none() {
-            self.accept_all(Newline);
-            self.parse_rhs();
+        loop {
+            self.accept_all_if(|k| k.is_trivia() || k == Newline);
+
+            if self.peek().is_none() {
+                break;
+            }
+
+            if let Some(RBracket) = self.peek_token() {
+                break;
+            }
+
+            if let Err(e) = self.parse_rhs_no_advance() {
+                if let ParseError::Expected { .. } = e {
+                    self.add_error_until(e, |k| k == RBracket);
+                    break;
+                } else {
+                    self.errors.push(e);
+                    self.finish_node();
+                    return;
+                }
+            }
+
             if let Some(RBracket) = self
                 .peek_until(|k| !k.is_trivia() && k != Newline)
                 .map(|(tok, _s)| tok)
@@ -251,9 +263,10 @@ impl<'a> Parser<'a> {
             } else {
                 self.expect_bump(Comma);
             }
-            self.eat_trivia();
-            self.accept_all(Newline);
+
+            self.accept_all_if(|k| k.is_trivia() || k == Newline);
         }
+
         self.expect_bump(RBracket);
         self.finish_node();
     }

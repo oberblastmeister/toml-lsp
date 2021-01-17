@@ -6,6 +6,10 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+interesting = [
+    
+]
+
 [dependencies]
 dirs-next = "2.0.0"
 log = "0.4.13"
@@ -20,3 +24,6 @@ thiserror = "1.0.23"
 
 [dev-dependencies]
 expect-test = "1.1.0"
+
+[another_one]
+this = "interesting"

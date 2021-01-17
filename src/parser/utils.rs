@@ -39,7 +39,7 @@ impl<'a> Parser<'a> {
                 self.errors.push(ParseError::Expected {
                     expected: allowed_slice.to_vec().into_boxed_slice(),
                     got: kind,
-                    range: TextRange::new(start, end),
+                    range: Some(TextRange::new(start, end)),
                 });
 
                 self.peek_token()
@@ -76,7 +76,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub(super) fn accept_if<F: Fn(SyntaxKind) -> bool>(&mut self, predicate: F) -> bool {
+        if self.peek_token().map(predicate).unwrap_or(false) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
     pub(super) fn accept_all(&mut self, accept: SyntaxKind) {
         while self.accept(accept) {}
+    }
+
+    pub(super) fn accept_all_if<F: Fn(SyntaxKind) -> bool>(&mut self, predicate: F) {
+        while self.accept_if(&predicate) {}
     }
 }
