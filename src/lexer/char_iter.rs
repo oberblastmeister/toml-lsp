@@ -77,8 +77,8 @@ impl<'a> CharIter<'a> {
         self.accept_while(|c| !predicate(c))
     }
 
-    pub fn find_char(&mut self, c: char) {
-        self.find(|candidate| *candidate == c);
+    pub fn find_char(&mut self, c: char) -> Option<char> {
+        self.find(|candidate| *candidate == c)
     }
 }
 

@@ -54,10 +54,6 @@ impl<'a> Parser<'a> {
         next
     }
 
-    pub(super) fn expect_peek(&mut self, expected: SyntaxKind) -> Option<SyntaxKind> {
-        self.expect_peek_any(&[expected])
-    }
-
     pub(super) fn expect_bump(&mut self, expected: SyntaxKind) {
         if self.expect_peek_any(&[expected]).is_some() {
             self.bump();

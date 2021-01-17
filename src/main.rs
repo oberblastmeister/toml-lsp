@@ -15,6 +15,7 @@ use lsp_types::{
     *,
 };
 use parser::AST;
+use rowan::TextRange;
 use simplelog::WriteLogger;
 
 mod lexer;
@@ -115,17 +116,13 @@ impl Server {
                 let params: DidOpenTextDocumentParams = serde_json::from_value(req.params)?;
                 let text = params.text_document.text;
                 let parsed = parser::parse(&text);
-                // trace!("Parsed: {:#?}", parsed);
                 self.send_diagnostics(params.text_document.uri.clone(), &text, &parsed)?;
-                // self.send_simple(params.text_document.uri.clone(), "did open");
                 self.files.insert(params.text_document.uri, (parsed, text));
             }
             DidChangeTextDocument::METHOD => {
                 let params: DidChangeTextDocumentParams = serde_json::from_value(req.params)?;
                 if let Some(change) = params.content_changes.into_iter().last() {
                     let parsed = parser::parse(&change.text);
-                    // debug!("Parsed: {:#?}", parsed);
-                    // self.send_simple(params.text_document.uri.clone(), &change.text);
                     self.send_diagnostics(params.text_document.uri.clone(), &change.text, &parsed)?;
                     self.files
                         .insert(params.text_document.uri, (parsed, change.text));
@@ -161,12 +158,19 @@ impl Server {
         let errors = ast.errors();
         let mut diagnostics = Vec::with_capacity(errors.len());
         for err in errors {
-            diagnostics.push(Diagnostic {
-                range: Range::new(Position::new(2, 2), Position::new(2, 2)),
-                severity: Some(DiagnosticSeverity::Error),
-                message: err.to_string(),
-                ..Diagnostic::default()
-            });
+            if let ParseError::Expected {
+                range: node_range, ..
+            } = err
+            {
+                let the_range = range(code, node_range);
+                debug!("range: {:?}", the_range);
+                diagnostics.push(Diagnostic {
+                    range: the_range,
+                    severity: Some(DiagnosticSeverity::Error),
+                    message: err.to_string(),
+                    ..Diagnostic::default()
+                });
+            }
         }
         self.notify(Notification::new(
             "textDocument/publishDiagnostics".into(),
@@ -207,5 +211,32 @@ impl Server {
             ErrorCode::UnknownErrorCode as i32,
             err.to_string(),
         ));
+    }
+}
+
+pub fn offset_to_pos(code: &str, offset: usize) -> Position {
+    debug!("Code: {:?}", code);
+    let start_of_line = code[..offset].rfind('\n').map_or(0, |n| n + 1);
+    let line = code[..start_of_line].chars().filter(|&c| c == '\n').count() as u32;
+    let character = code[start_of_line..offset] 
+            .chars()
+            .map(|c| c.len_utf16() as u32)
+            .sum();
+
+    debug!("Start of line: {:?}", start_of_line);
+    debug!("Line number: {:?}", start_of_line);
+    debug!("Character number: {:?}", start_of_line);
+
+    Position {
+        character,
+        line
+    }
+}
+
+pub fn range(code: &str, range: TextRange) -> Range {
+    debug!("Text range: {:#?}", range);
+    Range {
+        start: offset_to_pos(code, range.start().into()),
+        end: offset_to_pos(code, range.end().into()),
     }
 }

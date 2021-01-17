@@ -55,8 +55,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn string(&mut self) -> Option<SyntaxKind> {
-        self.chars.find_char('"');
-        Some(String)
+        let op = self.chars.find_char('"');
+        if op.is_some() {
+            Some(String)
+        } else {
+            Some(Error)
+        }
     }
 
     fn key_word(&mut self) -> Option<SyntaxKind> {
@@ -195,5 +199,21 @@ another_key = 12345"#,
                 (Number, "12345"),
             ],
         )
+    }
+
+    #[test]
+    fn test_cannot_find() {
+        test_lexer(
+            r#"" adfasdf"#,
+            &[
+                (Error, "\" adfasdf")
+            ]
+        );
+        test_lexer(
+            r#"""#,
+            &[
+                (Error, "\"")
+            ]
+        );
     }
 }

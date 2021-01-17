@@ -16,24 +16,53 @@ pub use error::ParseError;
 use syntax::Toml;
 
 macro_rules! expect_match {
-    ($p:expr, $($token:ident => $do:expr,)+) => {
+    ($p:expr, $( $token:ident => $do:expr ),+ $(,)?) => {
+        // expect_match!($p, $( $token => { $do } ),+, _ => ())
         {
             let p = &mut *$p;
             if let Some(tok) = p.expect_peek_any(&[$( $token ),+]) {
                 match tok {
                     $( $token => {
-                        {$do};
-                    } ),+,
-                    _ => panic!("should not happen"),
+                        $do;
+
+                        #[allow(unreachable_code)]
+                        Some(tok)
+                    } ),+
+                    _ => panic!("BUG: should not happen"),
                 }
+            } else {
+                None
             }
         }
     };
 
-    // be able to accept optional comma at the end
-    ($p:expr, $($token:ident => $do:expr),+) => {
-        expect_match!($p, $($token => $do,)+);
-    }
+    ($p:expr, $( $token:ident => $do:expr ),+, _ => $else:expr $(,)?) => {
+        {
+            let p = &mut *$p;
+            if let Some(tok) = p.expect_peek_any(&[$( $token ),+]) {
+                match tok {
+                    $( $token => {
+                        $do
+                    } ),+
+                    _ => panic!("BUG: should not happen"),
+                }
+            } else {
+                $else;
+
+                #[allow(unreachable_code)]
+                None
+            }
+        }
+    };
+}
+
+macro_rules! break_try {
+    ($try:expr) => {
+        match $try {
+            Some(e) => e,
+            None => break,
+        }
+    };
 }
 
 pub fn parse(input: &str) -> AST {
@@ -51,10 +80,12 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(input: &str) -> Parser<'_> {
-        let mut buffer = VecDeque::with_capacity(1);
+        let mut buffer = VecDeque::new();
         let mut lexer = Lexer::new(input);
-        if let Some(tok) = lexer.next() {
-            buffer.push_back(tok);
+        for _ in 0..2 {
+            if let Some(tok) = lexer.next() {
+                buffer.push_back(tok);
+            }
         }
         let errors: Vec<ParseError> = Vec::new();
         Parser {
@@ -93,7 +124,7 @@ impl<'a> Parser<'a> {
     fn parse_contents(&mut self) {
         expect_match!(self,
             Ident => self.parse_assign(),
-        )
+        );
     }
 
     fn parse_assign(&mut self) {
@@ -143,9 +174,8 @@ impl<'a> Parser<'a> {
                     self.parse_table_contents();
                     self.finish_node();
                 }
-
             },
-        )
+        );
     }
 
     fn parse_table_ident(&mut self) {
@@ -172,11 +202,11 @@ impl<'a> Parser<'a> {
                 RBracket => {
                     break;
                 },
-            )
+            );
         }
     }
 
-    fn parse_rhs(&mut self) {
+    fn parse_rhs(&mut self) -> Option<SyntaxKind> {
         expect_match!(self,
             Number => self.bump(),
             String => self.bump(),
@@ -187,17 +217,20 @@ impl<'a> Parser<'a> {
 
     fn parse_array(&mut self) {
         self.start_node(Array);
-        self.bump();
-        self.parse_rhs();
-        loop {
-            if self.accept(Comma) {
-                self.parse_rhs()
-            } else if self.accept(Newline) {
-                return;
-            } else if self.accept(RBracket) {
-                break;
-            }
+        self.expect_bump(LBracket);
+
+        while self.peek_is(RBracket).is_none() {
+            // break_try!(self.parse_rhs());
+            break_try!(self.parse_rhs());
+            self.expect_bump(Comma);
+            // dbg!(self.peek_back_token());
+            // if let Some(RBracket) = self.peek_back_token() {
+            //     self.accept(Comma);
+            // } else {
+            //     self.expect_bump(Comma);
+            // }
         }
+        self.expect_bump(RBracket);
         self.finish_node();
     }
 
@@ -212,6 +245,7 @@ impl<'a> Parser<'a> {
     }
 
     fn token(&mut self, token: SyntaxKind, s: &str) {
+        self.index = self.index.checked_add(TextSize::of(s)).expect("Overflow");
         self.builder.token(token.into(), s.into());
     }
 
@@ -219,7 +253,17 @@ impl<'a> Parser<'a> {
         let next = self.next();
         match next {
             Some((tok, s)) => {
-                self.index.checked_add(TextSize::of(s));
+                self.token(tok, s);
+            }
+            None => {
+                self.errors.push(ParseError::UnexpectedEof);
+            }
+        }
+    }
+
+    fn bump_raw_back(&mut self) {
+        match self.next_back() {
+            Some((tok, s)) => {
                 self.token(tok, s);
             }
             None => {
@@ -256,14 +300,12 @@ impl AST {
     pub fn errors(&self) -> Vec<ParseError> {
         self.errors.clone()
     }
-}
 
-impl fmt::Display for AST {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    pub fn debug(&self) -> std::string::String {
         let formatted = format!("{:#?}", self.node());
 
         // We cut off the last byte because formatting the SyntaxNode adds on a newline at the end.
-        write!(f, "{}", &formatted[0..formatted.len() - 1])
+        format!("{}", &formatted[0..formatted.len() - 1])
     }
 }
 
@@ -273,48 +315,36 @@ mod tests {
 
     use super::*;
     use expect_test::{expect, expect_file, Expect};
-    use pretty_assertions::assert_eq;
 
     fn check(input: &str, expected: Expect) {
         let ast = Parser::new(input).parse();
-        expected.assert_eq(&format!("{}", ast));
+        expected.assert_eq(&ast.debug());
     }
 
     fn test_dir(name: &str) {
-        let dir: PathBuf = ["test_data", name].iter().collect();
+        let dir: PathBuf = [env!("CARGO_MANIFEST_DIR"), "test_data", name]
+            .iter()
+            .collect();
 
         dir.read_dir()
             .expect("Failed to read dir")
             .map(|p| p.expect("Failed to read entry").path())
             .filter(|p| p.extension() == Some(OsStr::new("toml")))
-            .for_each(|mut p| {
-                let mut code = fs::read_to_string(&p).expect("Failed to read to string");
-                if code.ends_with('\n') {
-                    code.truncate(code.len() - 1);
+            .for_each(|actual_path| {
+                let mut toml = fs::read_to_string(&actual_path).expect("Failed to read to string");
+                if toml.ends_with('\n') {
+                    toml.truncate(toml.len() - 1);
                 }
-                println!("code: {}\n", code);
-
-                let ast = parse(&code);
-
-                p.set_extension("expect");
-                let expected = fs::read_to_string(&p).unwrap();
+                let ast = parse(&toml);
 
                 let mut actual = std::string::String::new();
                 for error in ast.errors() {
                     writeln!(actual, "error: {}", error).unwrap();
                 }
-                writeln!(actual, "{}", ast).unwrap();
+                writeln!(actual, "{}", ast.debug()).unwrap();
 
-                if actual != expected {
-                    p.set_extension("toml");
-                    eprintln!("In {}:", p.display());
-                    eprintln!("--- Actual ---");
-                    eprintln!("{}", actual);
-                    eprintln!("-- Expected ---");
-                    eprintln!("{}", expected);
-                    eprintln!("--- End ---");
-                    panic!("Tests did not match");
-                }
+                let expect_path = actual_path.with_extension("expect");
+                expect_file![expect_path].assert_eq(&actual);
             })
     }
 
@@ -322,6 +352,6 @@ mod tests {
     mod dir_tests {
         use super::test_dir;
         #[test] fn let_test() { test_dir("parser/let") }
-        #[test] fn header() { test_dir("parser/header") }
+        #[test] fn array() { test_dir("parser/array") }
     }
 }
