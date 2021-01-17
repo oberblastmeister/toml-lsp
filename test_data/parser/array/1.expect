@@ -1,0 +1,20 @@
+Root@0..59
+  Comment@0..11 "# hello = \""
+  Newline@11..12 "\n"
+  Assign@12..46
+    Ident@12..16 "a_ky"
+    Whitespace@16..17 " "
+    Equal@17..18 "="
+    Whitespace@18..19 " "
+    Array@19..46
+      LBracket@19..20 "["
+      String@20..27 "\"hello\""
+      Comma@27..28 ","
+      Whitespace@28..29 " "
+      Number@29..34 "13412"
+      Comma@34..35 ","
+      Whitespace@35..36 " "
+      String@36..45 "\"another\""
+      RBracket@45..46 "]"
+  Newline@46..47 "\n"
+  Comment@47..59 "# hello = []"

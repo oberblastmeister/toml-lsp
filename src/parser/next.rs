@@ -5,21 +5,20 @@ use super::{
 };
 
 impl<'a> Parser<'a> {
-    pub(super) fn eat_trivia(&mut self) -> Option<()> {
+    pub(super) fn eat_trivia(&mut self) {
         while self
             .peek_token_raw()
-            .map(|t| t == Whitespace || t == Comment)
+            .map(|k| k.is_trivia())
             .unwrap_or(false)
         {
             self.bump_raw();
         }
-        Some(())
     }
 
     pub(super) fn eat_trivia_back(&mut self) -> Option<()> {
         while self
             .peek_back_raw_token()
-            .map(|t| t == Whitespace || t == Comment)
+            .map(|k| k.is_trivia())
             .unwrap_or(false)
         {
             self.bump_raw_back();
@@ -35,6 +34,11 @@ impl<'a> Parser<'a> {
         self.buffer.get(0).copied()
     }
 
+    pub(super) fn peek_until(&mut self, predicate: impl Fn(SyntaxKind) -> bool) -> Option<(SyntaxKind, &'a str)> {
+        self.bump_until(predicate);
+        self.peek_raw()
+    }
+
     pub(super) fn peek(&mut self) -> Option<(SyntaxKind, &'a str)> {
         self.eat_trivia();
         self.peek_raw()
@@ -46,6 +50,23 @@ impl<'a> Parser<'a> {
 
     pub(super) fn peek_back_raw_token(&mut self) -> Option<SyntaxKind> {
         self.peek_back_raw().map(|(tok, _s)| tok)
+    }
+
+    pub(super) fn peek_n(&mut self, mut n: usize) -> Option<(SyntaxKind, &'a str)> {
+        loop {
+            dbg!(n);
+            dbg!(&self.buffer);
+            if let Some((tok, s)) = dbg!(self.buffer.get(n)) {
+                let tok = *tok;
+                if tok.is_trivia() {
+                    self.buffer.push_back(dbg!(self.lexer.next()?));
+                    n += 1;
+                } else {
+                    println!("return");
+                    return Some((tok, s))
+                }
+            }
+        }
     }
 
     pub(super) fn peek_back(&mut self) -> Option<(SyntaxKind, &'a str)> {

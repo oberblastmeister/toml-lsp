@@ -215,20 +215,44 @@ impl<'a> Parser<'a> {
         )
     }
 
+    // fn parse_array(&mut self) {
+    //     self.start_node(Array);
+    //     self.expect_bump(LBracket);
+
+    //     self.parse_rhs();
+    //     while self.peek().is_some() && self.peek_is(RBracket).is_none() {
+    //         // dbg!(self.peek_n(1));
+    //         // self.expect_bump(Comma);
+    //         // self.accept_all(Newline);
+    //         if let Some(RBracket) = self.peek_n(1).map(|(tok, _s)| tok) {
+    //             self.accept(Comma);
+    //         } else {
+    //             self.expect_bump(Comma);
+    //         }
+    //         self.accept_all(Newline);
+    //         self.parse_rhs();
+    //     }
+    //     self.expect_bump(RBracket);
+    //     self.finish_node();
+    // }
+
     fn parse_array(&mut self) {
         self.start_node(Array);
         self.expect_bump(LBracket);
 
-        while self.peek_is(RBracket).is_none() {
-            // break_try!(self.parse_rhs());
-            break_try!(self.parse_rhs());
-            self.expect_bump(Comma);
-            // dbg!(self.peek_back_token());
-            // if let Some(RBracket) = self.peek_back_token() {
-            //     self.accept(Comma);
-            // } else {
-            //     self.expect_bump(Comma);
-            // }
+        while self.peek().is_some() && self.peek_is(RBracket).is_none() {
+            self.accept_all(Newline);
+            self.parse_rhs();
+            if let Some(RBracket) = self
+                .peek_until(|k| !k.is_trivia() && k != Newline)
+                .map(|(tok, _s)| tok)
+            {
+                self.accept(Comma);
+            } else {
+                self.expect_bump(Comma);
+            }
+            self.eat_trivia();
+            self.accept_all(Newline);
         }
         self.expect_bump(RBracket);
         self.finish_node();
